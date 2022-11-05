@@ -1,6 +1,7 @@
 ﻿using System;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Consumer;
+using Azure.Messaging.EventHubs.Processor;
 using Azure.Messaging.EventHubs.Producer;
 using Azure.Storage.Blobs;
 using Shuttle.Core.Contract;
@@ -33,6 +34,10 @@ namespace Shuttle.Esb.AzureEventHubs
         {
         };
 
+        public event EventHandler<ProcessErrorEventArgs> ProcessError = delegate
+        {
+        };
+
         public void OnConfigureProducer(object sender, ConfigureEventArgs<EventHubProducerClientOptions> args)
         {
             Guard.AgainstNull(sender, nameof(sender));
@@ -55,6 +60,14 @@ namespace Shuttle.Esb.AzureEventHubs
             Guard.AgainstNull(args, nameof(args));
 
             ConfigureProcessor.Invoke(sender, args);
+        }
+
+        public void OnProcessError(object sender, ProcessErrorEventArgs args)
+        {
+            Guard.AgainstNull(sender, nameof(sender));
+            Guard.AgainstNull(args, nameof(args));
+
+            ProcessError.Invoke(sender, args);
         }
     }
 }

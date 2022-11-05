@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <UserSecretsId>3ea2bec3-f917-4a45-a5d0-2be3dc4d587c</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.3.1" />
+    <PackageReference Include="NUnit" Version="3.13.3" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+    <PackageReference Include="Shuttle.Core.Uris" Version="10.0.6" />
+    <PackageReference Include="Shuttle.Esb.Tests" Version="13.2.0" />
+    <PackageReference Include="Shuttle.Esb.Logging" Version="13.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shuttle.Esb.AzureEventHubs\Shuttle.Esb.AzureEventHubs.csproj" />
+  </ItemGroup>
+
+</Project>

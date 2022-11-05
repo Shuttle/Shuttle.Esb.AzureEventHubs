@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.Tracing;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
@@ -55,33 +57,48 @@ namespace Shuttle.Esb.AzureEventHubs
             _processorClient = new EventProcessorClient(new BlobContainerClient(_eventHubQueueOptions.BlobStorageConnectionString, _eventHubQueueOptions.BlobContainerName, blobClientOptions), _eventHubQueueOptions.ConsumerGroup, _eventHubQueueOptions.ConnectionString, uri.QueueName, eventProcessorClientOptions);
 
             _processorClient.ProcessEventAsync += ProcessEventHandler;
+            _processorClient.ProcessErrorAsync += ProcessErrorHandler;
             _processorClient.PartitionInitializingAsync += InitializeEventHandler;
 
             _processorClient.StartProcessing(_cancellationToken);
         }
 
+        private Task ProcessErrorHandler(ProcessErrorEventArgs args)
+        {
+            _eventHubQueueOptions.OnProcessError(this, args);
+
+            return Task.CompletedTask;
+        }
+
         public void Dispose()
         {
-            _producerClient.DisposeAsync().AsTask().Wait(_eventHubQueueOptions.OperationTimeout);
-
-            if (_eventHubQueueOptions.ProcessEvents)
+            lock (_lock)
             {
-                try
+                if (_disposed)
                 {
-                    _processorClient.StopProcessing(_cancellationToken);
-                }
-                catch (TaskCanceledException)
-                {
-                    // ignore
+                    return;
                 }
 
-                _processorClient.PartitionInitializingAsync -= InitializeEventHandler;
-                _processorClient.ProcessEventAsync -= ProcessEventHandler;
+                _producerClient.DisposeAsync().AsTask().Wait(_eventHubQueueOptions.OperationTimeout);
 
-                _processorClient.ProcessEventAsync -= ProcessEventHandler;
+                if (_eventHubQueueOptions.ProcessEvents)
+                {
+                    try
+                    {
+                        _processorClient.StopProcessing(CancellationToken.None);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        // ignore
+                    }
+
+                    _processorClient.PartitionInitializingAsync -= InitializeEventHandler;
+                    _processorClient.ProcessEventAsync -= ProcessEventHandler;
+                    _processorClient.ProcessErrorAsync -= ProcessErrorHandler;
+                }
+
+                _disposed = true;
             }
-
-            _disposed = true;
         }
 
         public bool IsEmpty()
@@ -124,12 +141,7 @@ namespace Shuttle.Esb.AzureEventHubs
         {
             lock (_lock)
             {
-                if (_disposed)
-                {
-                    return null;
-                }
-
-                return _receivedMessages.Count > 0 ? _receivedMessages.Dequeue() : null;
+                return _receivedMessages.Count > 0 && !_disposed ? _receivedMessages.Dequeue() : null;
             }
         }
 
@@ -160,7 +172,7 @@ namespace Shuttle.Esb.AzureEventHubs
 
                 var args = (ProcessEventArgs)acknowledgementToken;
 
-                _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(args.Data.EventBody.ToArray()), args));
+                _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
             }
         }
 
@@ -183,7 +195,7 @@ namespace Shuttle.Esb.AzureEventHubs
         {
             if (args.HasEvent)
             {
-                _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(args.Data.EventBody.ToArray()), args));
+                _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
             }
 
             return Task.CompletedTask;

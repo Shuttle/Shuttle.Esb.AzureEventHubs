@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Shuttle.Esb.AzureEventHubs.Tests": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

@@ -56,7 +56,7 @@ The default JSON settings structure is as follows:
         "BlobStorageConnectionString": "{BlobStorageConnectionString}",
         "BlobContainerName": "{BlobContainerName}",
         "OperationTimeout": "00:00:30",
-        "DefaultStartingPosition": "Latest""
+        "DefaultStartingPosition": "Latest"
       }
     }
   }
