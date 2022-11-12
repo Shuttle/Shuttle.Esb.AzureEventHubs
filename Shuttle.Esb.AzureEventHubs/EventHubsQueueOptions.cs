@@ -20,6 +20,7 @@ namespace Shuttle.Esb.AzureEventHubs
         public string ConsumerGroup { get; set; } = EventHubConsumerClient.DefaultConsumerGroupName;
         public bool ProcessEvents { get; set; }
         public TimeSpan OperationTimeout { get; set; } = TimeSpan.FromSeconds(30);
+        public TimeSpan ConsumeTimeout { get; set; } = TimeSpan.FromSeconds(30);
         public EventPosition DefaultStartingPosition { get; set; } = EventPosition.Latest;
 
         public event EventHandler<ConfigureEventArgs<EventHubProducerClientOptions>> ConfigureProducer = delegate

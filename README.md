@@ -19,6 +19,7 @@ services.AddAzureEventHubs(builder =>
         BlobStorageConnectionString = "{BlobStorageConnectionString}",
         BlobContainerName = "{BlobContainerName}",
         OperationTimeout = TimeSpan.FromSeconds(30),
+        ConsumeTimeout = TimeSpan.FromSeconds(30),
         DefaultStartingPosition = EventPosition.Latest
     };
 
@@ -56,6 +57,7 @@ The default JSON settings structure is as follows:
         "BlobStorageConnectionString": "{BlobStorageConnectionString}",
         "BlobContainerName": "{BlobContainerName}",
         "OperationTimeout": "00:00:30",
+        "ConsumeTimeout": "00:00:30",
         "DefaultStartingPosition": "Latest"
       }
     }
@@ -73,5 +75,6 @@ The default JSON settings structure is as follows:
 | `BlobStorageConnectionString` | | The Azure Storage Account endpoint to connect to in order to perform checkpoints. |
 | `BlobContainerName` | | The blob container name where checkpoints will be stored. |
 | `OperationTimeout` | "00:00:30" | The duration to wait for relevant `async` methods to complete before timing out. |
+| `ConsumeTimeout` | "00:00:30" | The duration to poll for messages before returning `null`. |
 | `DefaultStartingPosition` | | The default starting position to use when no checkpoint exists. |
 
