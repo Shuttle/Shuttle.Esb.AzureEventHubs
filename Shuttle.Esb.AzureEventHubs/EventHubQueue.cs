@@ -17,10 +17,11 @@ namespace Shuttle.Esb.AzureEventHubs
 {
     public class EventHubQueue : IQueue, IPurgeQueue, IDisposable
     {
+        private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
+
         private readonly BlobContainerClient _blobContainerClient;
         private readonly CancellationToken _cancellationToken;
         private readonly EventHubQueueOptions _eventHubQueueOptions;
-        private readonly object _lock = new object();
         private readonly EventProcessorClient _processorClient;
         private readonly EventHubProducerClient _producerClient;
 
@@ -68,7 +69,9 @@ namespace Shuttle.Esb.AzureEventHubs
 
         public void Dispose()
         {
-            lock (_lock)
+            _lock.Wait(CancellationToken.None);
+
+            try
             {
                 if (_disposed)
                 {
@@ -95,51 +98,72 @@ namespace Shuttle.Esb.AzureEventHubs
 
                 _disposed = true;
             }
-        }
-
-        public void Purge()
-        {
-            if (!_eventHubQueueOptions.ProcessEvents)
+            finally
             {
-                return;
-            }
-
-            if (_eventHubQueueOptions.DefaultStartingPosition != EventPosition.Latest)
-            {
-                throw new ApplicationException(string.Format(Resources.UnsupportedPurgeException, Uri.Uri));
-            }
-
-            var checkpointStore = new BlobCheckpointStore(_blobContainerClient);
-
-            foreach (var partitionId in _producerClient.GetPartitionIdsAsync(_cancellationToken).Result)
-            {
-                var partitionProperties = _producerClient.GetPartitionPropertiesAsync(partitionId, _cancellationToken).Result;
-
-                checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber + 1, _cancellationToken).Wait(_eventHubQueueOptions.OperationTimeout);
+                _lock.Release();
             }
         }
 
-        public bool IsEmpty()
+        public async ValueTask<bool> IsEmpty()
         {
             if (!_eventHubQueueOptions.ProcessEvents)
             {
                 return true;
             }
 
-            lock (_lock)
+            await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
             {
                 Buffer();
 
                 return _receivedMessages.Count == 0;
             }
+            finally
+            {
+                _lock.Release();
+            }
         }
 
-        public void Enqueue(TransportMessage message, Stream stream)
+        public async Task Purge()
+        {
+            await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
+            {
+                if (!_eventHubQueueOptions.ProcessEvents)
+                {
+                    return;
+                }
+
+                if (_eventHubQueueOptions.DefaultStartingPosition != EventPosition.Latest)
+                {
+                    throw new ApplicationException(string.Format(Resources.UnsupportedPurgeException, Uri.Uri));
+                }
+
+                var checkpointStore = new BlobCheckpointStore(_blobContainerClient);
+
+                foreach (var partitionId in _producerClient.GetPartitionIdsAsync(_cancellationToken).Result)
+                {
+                    var partitionProperties = _producerClient.GetPartitionPropertiesAsync(partitionId, _cancellationToken).Result;
+
+                    await checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber + 1, _cancellationToken).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        public async Task Enqueue(TransportMessage message, Stream stream)
         {
             Guard.AgainstNull(message, nameof(message));
             Guard.AgainstNull(stream, nameof(stream));
 
-            lock (_lock)
+            await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
             {
                 if (_disposed)
                 {
@@ -150,9 +174,9 @@ namespace Shuttle.Esb.AzureEventHubs
                 {
                     using (var batch = _producerClient.CreateBatchAsync(_cancellationToken).Result)
                     {
-                        batch.TryAdd(new EventData(Convert.ToBase64String(stream.ToBytes())));
+                        batch.TryAdd(new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))));
 
-                        _producerClient.SendAsync(batch, _cancellationToken).Wait(_eventHubQueueOptions.OperationTimeout);
+                        await _producerClient.SendAsync(batch, _cancellationToken).ConfigureAwait(false);
                     }
                 }
                 catch (OperationCanceledException)
@@ -160,20 +184,30 @@ namespace Shuttle.Esb.AzureEventHubs
                     // ignore
                 }
             }
+            finally
+            {
+                _lock.Release();
+            }
         }
 
-        public ReceivedMessage GetMessage()
+        public async Task<ReceivedMessage> GetMessage()
         {
             if (!_eventHubQueueOptions.ProcessEvents)
             {
                 return null;
             }
 
-            lock (_lock)
+            await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
             {
                 Buffer();
 
                 return _receivedMessages.Count > 0 && !_disposed ? _receivedMessages.Dequeue() : null;
+            }
+            finally
+            {
+                _lock.Release();
             }
         }
 
@@ -212,31 +246,43 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        public void Acknowledge(object acknowledgementToken)
+        public async Task Acknowledge(object acknowledgementToken)
         {
             Guard.AgainstNull(acknowledgementToken, nameof(acknowledgementToken));
 
             var args = (ProcessEventArgs)acknowledgementToken;
 
+            await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
             try
             {
-                args.UpdateCheckpointAsync(_cancellationToken).Wait(_eventHubQueueOptions.OperationTimeout);
+                await args.UpdateCheckpointAsync(_cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // ignore
             }
+            finally
+            {
+                _lock.Release();
+            }
         }
 
-        public void Release(object acknowledgementToken)
+        public async Task Release(object acknowledgementToken)
         {
             Guard.AgainstNull(acknowledgementToken, nameof(acknowledgementToken));
 
-            lock (_lock)
+            await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
             {
                 var args = (ProcessEventArgs)acknowledgementToken;
 
                 _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
+            }
+            finally
+            {
+                _lock.Release();
             }
         }
 
