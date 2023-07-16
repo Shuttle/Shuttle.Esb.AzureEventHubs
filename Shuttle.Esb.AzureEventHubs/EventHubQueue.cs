@@ -31,6 +31,26 @@ namespace Shuttle.Esb.AzureEventHubs
         private bool _disposed;
         private bool _started;
 
+        public event EventHandler<MessageEnqueuedEventArgs> MessageEnqueued = delegate
+        {
+        };
+
+        public event EventHandler<MessageAcknowledgedEventArgs> MessageAcknowledged = delegate
+        {
+        };
+
+        public event EventHandler<MessageReleasedEventArgs> MessageReleased = delegate
+        {
+        };
+
+        public event EventHandler<MessageReceivedEventArgs> MessageReceived = delegate
+        {
+        };
+
+        public event EventHandler<OperationCompletedEventArgs> OperationCompleted = delegate
+        {
+        };
+
         public EventHubQueue(QueueUri uri, EventHubQueueOptions eventHubQueueOptions, CancellationToken cancellationToken)
         {
             Guard.AgainstNull(uri, nameof(uri));
@@ -108,6 +128,8 @@ namespace Shuttle.Esb.AzureEventHubs
         {
             if (!_eventHubQueueOptions.ProcessEvents)
             {
+                OperationCompleted.Invoke(this, new OperationCompletedEventArgs("IsEmpty", true));
+                
                 return true;
             }
 
@@ -117,7 +139,11 @@ namespace Shuttle.Esb.AzureEventHubs
             {
                 Buffer();
 
-                return _receivedMessages.Count == 0;
+                var result = _receivedMessages.Count == 0;
+
+                OperationCompleted.Invoke(this, new OperationCompletedEventArgs("IsEmpty", result));
+
+                return result;
             }
             finally
             {
@@ -149,6 +175,8 @@ namespace Shuttle.Esb.AzureEventHubs
 
                     await checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber + 1, _cancellationToken).ConfigureAwait(false);
                 }
+
+                OperationCompleted.Invoke(this, new OperationCompletedEventArgs("Purge"));
             }
             finally
             {
@@ -177,6 +205,8 @@ namespace Shuttle.Esb.AzureEventHubs
                         batch.TryAdd(new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))));
 
                         await _producerClient.SendAsync(batch, _cancellationToken).ConfigureAwait(false);
+
+                        MessageEnqueued.Invoke(this, new MessageEnqueuedEventArgs(message, stream));
                     }
                 }
                 catch (OperationCanceledException)
@@ -203,7 +233,14 @@ namespace Shuttle.Esb.AzureEventHubs
             {
                 Buffer();
 
-                return _receivedMessages.Count > 0 && !_disposed ? _receivedMessages.Dequeue() : null;
+                var receivedMessage = _receivedMessages.Count > 0 && !_disposed ? _receivedMessages.Dequeue() : null;
+
+                if (receivedMessage != null)
+                {
+                    MessageReceived.Invoke(this, new MessageReceivedEventArgs(receivedMessage));
+                }
+
+                return receivedMessage;
             }
             finally
             {
@@ -257,6 +294,8 @@ namespace Shuttle.Esb.AzureEventHubs
             try
             {
                 await args.UpdateCheckpointAsync(_cancellationToken).ConfigureAwait(false);
+
+                MessageAcknowledged.Invoke(this, new MessageAcknowledgedEventArgs(acknowledgementToken));
             }
             catch (OperationCanceledException)
             {
@@ -279,6 +318,8 @@ namespace Shuttle.Esb.AzureEventHubs
                 var args = (ProcessEventArgs)acknowledgementToken;
 
                 _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
+
+                MessageReleased.Invoke(this, new MessageReleasedEventArgs(acknowledgementToken));
             }
             finally
             {
