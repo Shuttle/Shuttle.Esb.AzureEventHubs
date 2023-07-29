@@ -9,30 +9,13 @@ namespace Shuttle.Esb.AzureEventHubs.Tests
 {
     public class AzureFixture
     {
-        public static IServiceCollection GetServiceCollection(bool log = false)
+        public static IServiceCollection GetServiceCollection()
         {
             var services = new ServiceCollection();
 
             var configuration = new ConfigurationBuilder().AddUserSecrets<AzureFixture>().Build();
 
             services.AddSingleton<IConfiguration>(configuration);
-
-            if (log)
-            {
-                services.AddServiceBusLogging(builder =>
-                {
-                    builder.Options.AddPipelineEventType<OnAbortPipeline>();
-                    builder.Options.AddPipelineEventType<OnPipelineStarting>();
-                    builder.Options.AddPipelineEventType<OnPipelineException>();
-                    builder.Options.AddPipelineEventType<OnGetMessage>();
-                });
-
-                services.AddLogging(builder =>
-                {
-                    builder.SetMinimumLevel(LogLevel.Trace);
-                    builder.AddConsole();
-                });
-            }
 
             services.AddAzureEventHubs(builder =>
             {

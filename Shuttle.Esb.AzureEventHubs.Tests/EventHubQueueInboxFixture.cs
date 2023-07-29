@@ -25,7 +25,7 @@ namespace Shuttle.Esb.AzureEventHubs.Tests
         [TestCase(100, false)]
         public void Should_be_able_to_process_queue_timeously(int count, bool isTransactionalEndpoint)
         {
-            TestInboxThroughput(AzureFixture.GetServiceCollection(true), "azureeh://azure/{0}", 1000, count, 1, isTransactionalEndpoint);
+            TestInboxThroughput(AzureFixture.GetServiceCollection(), "azureeh://azure/{0}", 1000, count, 1, isTransactionalEndpoint);
         }
     }
 }
