@@ -17,6 +17,8 @@ namespace Shuttle.Esb.AzureEventHubs
 {
     public class EventHubQueue : IQueue, IPurgeQueue, IDisposable
     {
+        private readonly OperationEventArgs _bufferOperationEventArgs = new OperationEventArgs("Buffer");
+        private readonly OperationEventArgs _processEventHandlerOperationEventArgs = new OperationEventArgs("ProcessEventHandler");
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
         private readonly BlobContainerClient _blobContainerClient;
@@ -26,8 +28,6 @@ namespace Shuttle.Esb.AzureEventHubs
         private readonly EventHubProducerClient _producerClient;
 
         private readonly Queue<ReceivedMessage> _receivedMessages = new Queue<ReceivedMessage>();
-        private CancellationToken _consumeCancellationToken;
-        private CancellationTokenSource _consumeCancellationTokenSource;
         private bool _disposed;
         private bool _started;
 
@@ -47,7 +47,11 @@ namespace Shuttle.Esb.AzureEventHubs
         {
         };
 
-        public event EventHandler<OperationCompletedEventArgs> OperationCompleted = delegate
+        public event EventHandler<OperationEventArgs> OperationStarting = delegate
+        {
+        };
+
+        public event EventHandler<OperationEventArgs> OperationCompleted = delegate
         {
         };
 
@@ -104,11 +108,17 @@ namespace Shuttle.Esb.AzureEventHubs
                 {
                     try
                     {
+                        OperationStarting.Invoke(this, new OperationEventArgs("StopProcessing"));
+
                         _processorClient.StopProcessing(CancellationToken.None);
                     }
                     catch (OperationCanceledException)
                     {
                         // ignore
+                    }
+                    finally
+                    {
+                        OperationCompleted.Invoke(this, new OperationEventArgs("StopProcessing"));
                     }
 
                     _processorClient.PartitionInitializingAsync -= InitializeEventHandler;
@@ -126,9 +136,11 @@ namespace Shuttle.Esb.AzureEventHubs
 
         public async ValueTask<bool> IsEmpty()
         {
+            OperationStarting.Invoke(this, new OperationEventArgs("IsEmpty"));
+
             if (!_eventHubQueueOptions.ProcessEvents)
             {
-                OperationCompleted.Invoke(this, new OperationCompletedEventArgs("IsEmpty", true));
+                OperationCompleted.Invoke(this, new OperationEventArgs("IsEmpty", true));
                 
                 return true;
             }
@@ -137,11 +149,11 @@ namespace Shuttle.Esb.AzureEventHubs
 
             try
             {
-                Buffer();
+                await Buffer();
 
                 var result = _receivedMessages.Count == 0;
 
-                OperationCompleted.Invoke(this, new OperationCompletedEventArgs("IsEmpty", result));
+                OperationCompleted.Invoke(this, new OperationEventArgs("IsEmpty", result));
 
                 return result;
             }
@@ -153,6 +165,8 @@ namespace Shuttle.Esb.AzureEventHubs
 
         public async Task Purge()
         {
+            OperationStarting.Invoke(this, new OperationEventArgs("Purge"));
+
             await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
             try
@@ -176,7 +190,7 @@ namespace Shuttle.Esb.AzureEventHubs
                     await checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber + 1, _cancellationToken).ConfigureAwait(false);
                 }
 
-                OperationCompleted.Invoke(this, new OperationCompletedEventArgs("Purge"));
+                OperationCompleted.Invoke(this, new OperationEventArgs("Purge"));
             }
             finally
             {
@@ -231,7 +245,7 @@ namespace Shuttle.Esb.AzureEventHubs
 
             try
             {
-                Buffer();
+                await Buffer();
 
                 var receivedMessage = _receivedMessages.Count > 0 && !_disposed ? _receivedMessages.Dequeue() : null;
 
@@ -248,39 +262,49 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        private void Buffer()
+        private async Task Buffer()
         {
             if (!_started)
             {
                 try
                 {
-                    _processorClient.StartProcessing(_cancellationToken);
+                    OperationStarting.Invoke(this, new OperationEventArgs("StartProcessing"));
+
+                    await _processorClient.StartProcessingAsync(_cancellationToken);
                     _started = true;
                 }
                 catch (OperationCanceledException)
                 {
                     // ignore
                 }
+                finally
+                {
+                    OperationCompleted.Invoke(this, new OperationEventArgs("StartProcessing"));
+                }
             }
 
-            if (_receivedMessages.Count == 0 && _eventHubQueueOptions.ConsumeTimeout > TimeSpan.Zero)
+            if (_eventHubQueueOptions.ConsumeTimeout <= TimeSpan.Zero)
             {
-                _consumeCancellationTokenSource = new CancellationTokenSource();
-                _consumeCancellationToken = _consumeCancellationTokenSource.Token;
+                return;
+            }
 
+            OperationStarting.Invoke(this, _bufferOperationEventArgs);
+
+            var timeout = DateTime.Now.Add(_eventHubQueueOptions.ConsumeTimeout);
+
+            while (_receivedMessages.Count == 0 && timeout > DateTime.Now && !_cancellationToken.IsCancellationRequested)
+            {
                 try
                 {
-                    Task.Delay(_eventHubQueueOptions.ConsumeTimeout, _consumeCancellationToken).Wait(_cancellationToken);
-                }
-                catch (AggregateException)
-                {
-                    // ignore
+                    await Task.Delay(250, _cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
                     // ignore
                 }
             }
+
+            OperationCompleted.Invoke(this, _bufferOperationEventArgs);
         }
 
         public async Task Acknowledge(object acknowledgementToken)
@@ -351,12 +375,14 @@ namespace Shuttle.Esb.AzureEventHubs
 
         private Task ProcessEventHandler(ProcessEventArgs args)
         {
+            OperationStarting.Invoke(this, _processEventHandlerOperationEventArgs);
+
             if (args.HasEvent)
             {
-                _consumeCancellationTokenSource?.Cancel();
-
                 _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
             }
+
+            OperationCompleted.Invoke(this, _processEventHandlerOperationEventArgs);
 
             return Task.CompletedTask;
         }
