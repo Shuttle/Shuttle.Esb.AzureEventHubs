@@ -5,13 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Shuttle.Esb.AzureEventHubs.Tests;
 
-public class AzureFixture
+public class AzureEventHubsConfiguration
 {
     public static IServiceCollection GetServiceCollection()
     {
         var services = new ServiceCollection();
 
-        var configuration = new ConfigurationBuilder().AddUserSecrets<AzureFixture>().Build();
+        var configuration = new ConfigurationBuilder().AddUserSecrets<AzureEventHubsConfiguration>().Build();
 
         services.AddSingleton<IConfiguration>(configuration);
 
@@ -25,7 +25,8 @@ public class AzureFixture
                 BlobContainerName = "eh-shuttle-esb",
                 OperationTimeout = TimeSpan.FromSeconds(5),
                 ConsumeTimeout = TimeSpan.FromSeconds(5),
-                DefaultStartingPosition = EventPosition.Latest
+                DefaultStartingPosition = EventPosition.Latest,
+                CheckpointInterval = 5
             };
 
             configuration.GetSection($"{EventHubQueueOptions.SectionName}:azure").Bind(eventHubQueueOptions);

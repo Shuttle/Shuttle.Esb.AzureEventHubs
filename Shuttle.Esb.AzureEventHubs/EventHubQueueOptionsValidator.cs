@@ -34,6 +34,11 @@ namespace Shuttle.Esb.AzureEventHubs
                 }
             }
 
+            if (options.CheckpointInterval < 1)
+            {
+                return ValidateOptionsResult.Fail(string.Format(Esb.Resources.QueueConfigurationItemException, name, nameof(options.CheckpointInterval)));
+            }
+
             return ValidateOptionsResult.Success;
         }
     }

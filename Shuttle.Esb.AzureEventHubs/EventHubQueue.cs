@@ -17,8 +17,11 @@ namespace Shuttle.Esb.AzureEventHubs
 {
     public class EventHubQueue : IQueue, IPurgeQueue, IDisposable
     {
-        private readonly OperationEventArgs _bufferOperationEventArgs = new OperationEventArgs("Buffer");
-        private readonly OperationEventArgs _processEventHandlerOperationEventArgs = new OperationEventArgs("ProcessEventHandler");
+        private readonly OperationEventArgs _bufferOperationStartingEventArgs = new OperationEventArgs("[buffer/starting]");
+        private readonly OperationEventArgs _bufferOperationCompletedEventArgs = new OperationEventArgs("[buffer/starting]");
+        private readonly OperationEventArgs _processEventHandlerOperationMessageReceivedEventArgs = new OperationEventArgs("[process-event-handler/message-received]");
+        private readonly OperationEventArgs _processEventHandlerOperationNoMessageReceivedEventArgs = new OperationEventArgs("[process-event-handler/no-message-received]");
+        private readonly OperationEventArgs _acknowledgeStartingEventArgs = new OperationEventArgs("[acknowledge/starting]");
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
         private readonly BlobContainerClient _blobContainerClient;
@@ -31,29 +34,14 @@ namespace Shuttle.Esb.AzureEventHubs
         private bool _disposed;
         private bool _started;
 
-        public event EventHandler<MessageEnqueuedEventArgs> MessageEnqueued = delegate
-        {
-        };
+        public event EventHandler<MessageEnqueuedEventArgs> MessageEnqueued;
+        public event EventHandler<MessageAcknowledgedEventArgs> MessageAcknowledged;
+        public event EventHandler<MessageReleasedEventArgs> MessageReleased;
+        public event EventHandler<MessageReceivedEventArgs> MessageReceived;
+        public event EventHandler<OperationEventArgs> Operation;
 
-        public event EventHandler<MessageAcknowledgedEventArgs> MessageAcknowledged = delegate
-        {
-        };
-
-        public event EventHandler<MessageReleasedEventArgs> MessageReleased = delegate
-        {
-        };
-
-        public event EventHandler<MessageReceivedEventArgs> MessageReceived = delegate
-        {
-        };
-
-        public event EventHandler<OperationEventArgs> OperationStarting = delegate
-        {
-        };
-
-        public event EventHandler<OperationEventArgs> OperationCompleted = delegate
-        {
-        };
+        private int _checkpointItem = 1;
+        private ProcessEventArgs? _acknowledgeProcessEventArgs;
 
         public EventHubQueue(QueueUri uri, EventHubQueueOptions eventHubQueueOptions, CancellationToken cancellationToken)
         {
@@ -104,21 +92,23 @@ namespace Shuttle.Esb.AzureEventHubs
 
                 _producerClient.DisposeAsync().AsTask().Wait(_eventHubQueueOptions.OperationTimeout);
 
+                _acknowledgeProcessEventArgs?.UpdateCheckpointAsync(CancellationToken.None).GetAwaiter().GetResult();
+
                 if (_eventHubQueueOptions.ProcessEvents)
                 {
                     try
                     {
-                        OperationStarting.Invoke(this, new OperationEventArgs("StopProcessing"));
+                        Operation?.Invoke(this, new OperationEventArgs("[dispose/stop-processing/starting]"));
 
                         _processorClient.StopProcessing(CancellationToken.None);
                     }
                     catch (OperationCanceledException)
                     {
-                        // ignore
+                        // ignore - shouldn't happen
                     }
                     finally
                     {
-                        OperationCompleted.Invoke(this, new OperationEventArgs("StopProcessing"));
+                        Operation?.Invoke(this, new OperationEventArgs("[dispose/stop-processing/completed]"));
                     }
 
                     _processorClient.PartitionInitializingAsync -= InitializeEventHandler;
@@ -134,26 +124,37 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        public async ValueTask<bool> IsEmpty()
+        public bool IsEmpty()
         {
-            OperationStarting.Invoke(this, new OperationEventArgs("IsEmpty"));
+            return IsEmptyAsync().GetAwaiter().GetResult();
+        }
+
+        public async ValueTask<bool> IsEmptyAsync()
+        {
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[is-empty/cancelled]", true));
+                return true;
+            }
 
             if (!_eventHubQueueOptions.ProcessEvents)
             {
-                OperationCompleted.Invoke(this, new OperationEventArgs("IsEmpty", true));
-                
+                Operation?.Invoke(this, new OperationEventArgs("[is-empty]", true));
+
                 return true;
             }
+
+            Operation?.Invoke(this, new OperationEventArgs("[is-empty/starting]"));
 
             await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
             try
             {
-                await Buffer();
+                await BufferAsync();
 
                 var result = _receivedMessages.Count == 0;
 
-                OperationCompleted.Invoke(this, new OperationEventArgs("IsEmpty", result));
+                Operation?.Invoke(this, new OperationEventArgs("[is-empty]", result));
 
                 return result;
             }
@@ -163,9 +164,25 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        public async Task Purge()
+        public void Enqueue(TransportMessage transportMessage, Stream stream)
         {
-            OperationStarting.Invoke(this, new OperationEventArgs("Purge"));
+            EnqueueAsync(transportMessage, stream).GetAwaiter().GetResult();
+        }
+
+        public void Purge()
+        {
+            PurgeAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task PurgeAsync()
+        {
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[purge/cancelled]"));
+                return;
+            }
+
+            Operation?.Invoke(this, new OperationEventArgs("[purge/starting]"));
 
             await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
@@ -189,44 +206,51 @@ namespace Shuttle.Esb.AzureEventHubs
 
                     await checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber + 1, _cancellationToken).ConfigureAwait(false);
                 }
-
-                OperationCompleted.Invoke(this, new OperationEventArgs("Purge"));
+            }
+            catch (OperationCanceledException)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[purge/cancelled]"));
             }
             finally
             {
                 _lock.Release();
             }
+
+            Operation?.Invoke(this, new OperationEventArgs("[purge/completed]"));
         }
 
-        public async Task Enqueue(TransportMessage message, Stream stream)
+        public async Task EnqueueAsync(TransportMessage message, Stream stream)
         {
             Guard.AgainstNull(message, nameof(message));
             Guard.AgainstNull(stream, nameof(stream));
 
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[enqueue/cancelled]"));
+                return;
+            }
+
             await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            if (_disposed)
+            {
+                return;
+            }
 
             try
             {
-                if (_disposed)
+                using (var batch = await _producerClient.CreateBatchAsync(_cancellationToken))
                 {
-                    return;
-                }
+                    batch.TryAdd(new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))));
 
-                try
-                {
-                    using (var batch = _producerClient.CreateBatchAsync(_cancellationToken).Result)
-                    {
-                        batch.TryAdd(new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))));
+                    await _producerClient.SendAsync(batch, _cancellationToken).ConfigureAwait(false);
 
-                        await _producerClient.SendAsync(batch, _cancellationToken).ConfigureAwait(false);
-
-                        MessageEnqueued.Invoke(this, new MessageEnqueuedEventArgs(message, stream));
-                    }
+                    MessageEnqueued?.Invoke(this, new MessageEnqueuedEventArgs(message, stream));
                 }
-                catch (OperationCanceledException)
-                {
-                    // ignore
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[enqueue/cancelled]"));
             }
             finally
             {
@@ -234,8 +258,19 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        public async Task<ReceivedMessage> GetMessage()
+        public ReceivedMessage GetMessage()
         {
+            return GetMessageAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task<ReceivedMessage> GetMessageAsync()
+        {
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[enqueue/cancelled]"));
+                return null;
+            }
+
             if (!_eventHubQueueOptions.ProcessEvents)
             {
                 return null;
@@ -245,13 +280,13 @@ namespace Shuttle.Esb.AzureEventHubs
 
             try
             {
-                await Buffer();
+                await BufferAsync();
 
                 var receivedMessage = _receivedMessages.Count > 0 && !_disposed ? _receivedMessages.Dequeue() : null;
 
                 if (receivedMessage != null)
                 {
-                    MessageReceived.Invoke(this, new MessageReceivedEventArgs(receivedMessage));
+                    MessageReceived?.Invoke(this, new MessageReceivedEventArgs(receivedMessage));
                 }
 
                 return receivedMessage;
@@ -262,24 +297,29 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        private async Task Buffer()
+        public void Acknowledge(object acknowledgementToken)
+        {
+            AcknowledgeAsync(acknowledgementToken).GetAwaiter().GetResult();
+        }
+
+        private async Task BufferAsync()
         {
             if (!_started)
             {
                 try
                 {
-                    OperationStarting.Invoke(this, new OperationEventArgs("StartProcessing"));
+                    Operation?.Invoke(this, new OperationEventArgs("[start-processing/starting]"));
 
                     await _processorClient.StartProcessingAsync(_cancellationToken);
                     _started = true;
                 }
                 catch (OperationCanceledException)
                 {
-                    // ignore
+                    Operation?.Invoke(this, new OperationEventArgs("[start-processing/cancelled]"));
                 }
                 finally
                 {
-                    OperationCompleted.Invoke(this, new OperationEventArgs("StartProcessing"));
+                    Operation?.Invoke(this, new OperationEventArgs("[start-processing/completed]"));
                 }
             }
 
@@ -288,7 +328,7 @@ namespace Shuttle.Esb.AzureEventHubs
                 return;
             }
 
-            OperationStarting.Invoke(this, _bufferOperationEventArgs);
+            Operation?.Invoke(this, _bufferOperationStartingEventArgs);
 
             var timeout = DateTime.Now.Add(_eventHubQueueOptions.ConsumeTimeout);
 
@@ -304,26 +344,48 @@ namespace Shuttle.Esb.AzureEventHubs
                 }
             }
 
-            OperationCompleted.Invoke(this, _bufferOperationEventArgs);
+            Operation?.Invoke(this, _bufferOperationCompletedEventArgs);
         }
 
-        public async Task Acknowledge(object acknowledgementToken)
+        public async Task AcknowledgeAsync(object acknowledgementToken)
         {
             Guard.AgainstNull(acknowledgementToken, nameof(acknowledgementToken));
 
-            var args = (ProcessEventArgs)acknowledgementToken;
+            if (!(acknowledgementToken is ProcessEventArgs args))
+            {
+                return;
+            }
+
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[acknowledge/cancelled]"));
+                return;
+            }
 
             await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
             try
             {
-                await args.UpdateCheckpointAsync(_cancellationToken).ConfigureAwait(false);
+                if (_checkpointItem == _eventHubQueueOptions.CheckpointInterval)
+                {
+                    Operation?.Invoke(this, _acknowledgeStartingEventArgs);
 
-                MessageAcknowledged.Invoke(this, new MessageAcknowledgedEventArgs(acknowledgementToken));
+                    await args.UpdateCheckpointAsync(_cancellationToken).ConfigureAwait(false);
+
+                    _acknowledgeProcessEventArgs = null;
+                    _checkpointItem = 1;
+
+                    MessageAcknowledged?.Invoke(this, new MessageAcknowledgedEventArgs(acknowledgementToken));
+                }
+                else
+                {
+                    _acknowledgeProcessEventArgs = args;
+                    _checkpointItem++;
+                }
             }
             catch (OperationCanceledException)
             {
-                // ignore
+                Operation?.Invoke(this, new OperationEventArgs("[acknowledge/cancelled]"));
             }
             finally
             {
@@ -331,19 +393,34 @@ namespace Shuttle.Esb.AzureEventHubs
             }
         }
 
-        public async Task Release(object acknowledgementToken)
+        public void Release(object acknowledgementToken)
+        {
+            ReleaseAsync(acknowledgementToken).GetAwaiter().GetResult();
+        }
+
+        public async Task ReleaseAsync(object acknowledgementToken)
         {
             Guard.AgainstNull(acknowledgementToken, nameof(acknowledgementToken));
 
+            if (!(acknowledgementToken is ProcessEventArgs args))
+            {
+                return;
+            }
+
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                Operation?.Invoke(this, new OperationEventArgs("[release/cancelled]"));
+                return;
+            }
+
+            
             await _lock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
             try
             {
-                var args = (ProcessEventArgs)acknowledgementToken;
-
                 _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
 
-                MessageReleased.Invoke(this, new MessageReleasedEventArgs(acknowledgementToken));
+                MessageReleased?.Invoke(this, new MessageReleasedEventArgs(acknowledgementToken));
             }
             finally
             {
@@ -375,14 +452,15 @@ namespace Shuttle.Esb.AzureEventHubs
 
         private Task ProcessEventHandler(ProcessEventArgs args)
         {
-            OperationStarting.Invoke(this, _processEventHandlerOperationEventArgs);
-
             if (args.HasEvent)
             {
                 _receivedMessages.Enqueue(new ReceivedMessage(new MemoryStream(Convert.FromBase64String(Encoding.UTF8.GetString(args.Data.Body.ToArray()))), args));
+                Operation?.Invoke(this, _processEventHandlerOperationMessageReceivedEventArgs);
             }
-
-            OperationCompleted.Invoke(this, _processEventHandlerOperationEventArgs);
+            else
+            {
+                Operation?.Invoke(this, _processEventHandlerOperationNoMessageReceivedEventArgs);
+            }
 
             return Task.CompletedTask;
         }

@@ -13,11 +13,11 @@
 		<repository type="git" url="https://github.com/Shuttle/Shuttle.Esb.AzureEventHubs.git" />
 		<projectUrl>https://github.com/Shuttle/Shuttle.Esb.AzureEventHubs</projectUrl>
 		<description>Azure Event Hubs implementation for use with Shuttle.Esb.</description>
-		<copyright>Copyright (c) 2023, Eben Roux</copyright>
+		<copyright>Copyright (c) 2024, Eben Roux</copyright>
 		<tags>azure eventshubs</tags>
 		<dependencies>
-      <dependency id="Azure.Messaging.EventHubs" version="5.7.5" />
-      <dependency id="Azure.Messaging.EventHubs.Processor" version="5.7.5" />
+      <dependency id="Azure.Messaging.EventHubs" version="5.10.0" />
+      <dependency id="Azure.Messaging.EventHubs.Processor" version="5.10.0" />
       <dependency id="Shuttle.Esb" version="14.0.0" />
 		</dependencies>
 	</metadata>

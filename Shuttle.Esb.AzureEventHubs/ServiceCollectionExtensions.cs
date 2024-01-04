@@ -30,6 +30,7 @@ namespace Shuttle.Esb.AzureEventHubs
                     options.OperationTimeout = pair.Value.OperationTimeout;
                     options.ConsumeTimeout = pair.Value.ConsumeTimeout;
                     options.DefaultStartingPosition = pair.Value.DefaultStartingPosition;
+                    options.CheckpointInterval = pair.Value.CheckpointInterval;
 
                     options.ConfigureProducer += (sender, args) =>
                     {
