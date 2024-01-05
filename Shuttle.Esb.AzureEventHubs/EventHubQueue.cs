@@ -267,7 +267,7 @@ namespace Shuttle.Esb.AzureEventHubs
         {
             if (_cancellationToken.IsCancellationRequested)
             {
-                Operation?.Invoke(this, new OperationEventArgs("[enqueue/cancelled]"));
+                Operation?.Invoke(this, new OperationEventArgs("[get-message/cancelled]"));
                 return null;
             }
 
