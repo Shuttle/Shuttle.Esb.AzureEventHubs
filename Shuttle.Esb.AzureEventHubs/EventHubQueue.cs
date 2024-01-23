@@ -431,26 +431,26 @@ namespace Shuttle.Esb.AzureEventHubs
         public QueueUri Uri { get; }
         public bool IsStream { get; } = true;
 
-        private Task InitializeEventHandler(PartitionInitializingEventArgs args)
+        private async Task InitializeEventHandler(PartitionInitializingEventArgs args)
         {
             if (args.CancellationToken.IsCancellationRequested)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             args.DefaultStartingPosition = _eventHubQueueOptions.DefaultStartingPosition;
 
-            return Task.CompletedTask;
+            await Task.CompletedTask;
         }
 
-        private Task ProcessErrorHandler(ProcessErrorEventArgs args)
+        private async Task ProcessErrorHandler(ProcessErrorEventArgs args)
         {
             _eventHubQueueOptions.OnProcessError(this, args);
 
-            return Task.CompletedTask;
+            await Task.CompletedTask;
         }
 
-        private Task ProcessEventHandler(ProcessEventArgs args)
+        private async Task ProcessEventHandler(ProcessEventArgs args)
         {
             if (args.HasEvent)
             {
@@ -462,7 +462,7 @@ namespace Shuttle.Esb.AzureEventHubs
                 Operation?.Invoke(this, _processEventHandlerOperationNoMessageReceivedEventArgs);
             }
 
-            return Task.CompletedTask;
+            await Task.CompletedTask;
         }
     }
 }
