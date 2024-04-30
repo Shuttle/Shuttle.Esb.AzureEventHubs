@@ -22,29 +22,19 @@ namespace Shuttle.Esb.AzureEventHubs
         public TimeSpan OperationTimeout { get; set; } = TimeSpan.FromSeconds(30);
         public TimeSpan ConsumeTimeout { get; set; } = TimeSpan.FromSeconds(30);
         public EventPosition DefaultStartingPosition { get; set; } = EventPosition.Latest;
+        public int CheckpointInterval { get; set; } = 1;
 
-        public event EventHandler<ConfigureEventArgs<EventHubProducerClientOptions>> ConfigureProducer = delegate
-        {
-        };
-
-        public event EventHandler<ConfigureEventArgs<BlobClientOptions>> ConfigureBlobStorage = delegate
-        {
-        };
-
-        public event EventHandler<ConfigureEventArgs<EventProcessorClientOptions>> ConfigureProcessor = delegate
-        {
-        };
-
-        public event EventHandler<ProcessErrorEventArgs> ProcessError = delegate
-        {
-        };
+        public event EventHandler<ConfigureEventArgs<EventHubProducerClientOptions>> ConfigureProducer;
+        public event EventHandler<ConfigureEventArgs<BlobClientOptions>> ConfigureBlobStorage;
+        public event EventHandler<ConfigureEventArgs<EventProcessorClientOptions>> ConfigureProcessor;
+        public event EventHandler<ProcessErrorEventArgs> ProcessError;
 
         public void OnConfigureProducer(object sender, ConfigureEventArgs<EventHubProducerClientOptions> args)
         {
             Guard.AgainstNull(sender, nameof(sender));
             Guard.AgainstNull(args, nameof(args));
 
-            ConfigureProducer.Invoke(sender, args);
+            ConfigureProducer?.Invoke(sender, args);
         }
 
         public void OnConfigureBlobStorage(object sender, ConfigureEventArgs<BlobClientOptions> args)
@@ -52,7 +42,7 @@ namespace Shuttle.Esb.AzureEventHubs
             Guard.AgainstNull(sender, nameof(sender));
             Guard.AgainstNull(args, nameof(args));
 
-            ConfigureBlobStorage.Invoke(sender, args);
+            ConfigureBlobStorage?.Invoke(sender, args);
         }
 
         public void OnConfigureProcessor(object sender, ConfigureEventArgs<EventProcessorClientOptions> args)
@@ -60,7 +50,7 @@ namespace Shuttle.Esb.AzureEventHubs
             Guard.AgainstNull(sender, nameof(sender));
             Guard.AgainstNull(args, nameof(args));
 
-            ConfigureProcessor.Invoke(sender, args);
+            ConfigureProcessor?.Invoke(sender, args);
         }
 
         public void OnProcessError(object sender, ProcessErrorEventArgs args)
@@ -68,7 +58,7 @@ namespace Shuttle.Esb.AzureEventHubs
             Guard.AgainstNull(sender, nameof(sender));
             Guard.AgainstNull(args, nameof(args));
 
-            ProcessError.Invoke(sender, args);
+            ProcessError?.Invoke(sender, args);
         }
     }
 }

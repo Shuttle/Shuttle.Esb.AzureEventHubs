@@ -61,6 +61,15 @@ namespace Shuttle.Esb.AzureEventHubs {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The checkpoint interval cannot be less than 1..
+        /// </summary>
+        public static string InvalidCheckpointIntervalException {
+            get {
+                return ResourceManager.GetString("InvalidCheckpointIntervalException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Cannot purge queue &apos;{0}&apos; as the `DefaultStartingPosition` position is not `Latest`..
         /// </summary>
         public static string UnsupportedPurgeException {
