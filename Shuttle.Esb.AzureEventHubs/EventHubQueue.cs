@@ -18,7 +18,7 @@ namespace Shuttle.Esb.AzureEventHubs
     public class EventHubQueue : IQueue, IPurgeQueue, IDisposable
     {
         private readonly OperationEventArgs _bufferOperationStartingEventArgs = new OperationEventArgs("[buffer/starting]");
-        private readonly OperationEventArgs _bufferOperationCompletedEventArgs = new OperationEventArgs("[buffer/starting]");
+        private readonly OperationEventArgs _bufferOperationCompletedEventArgs = new OperationEventArgs("[buffer/completed]");
         private readonly OperationEventArgs _processEventHandlerOperationMessageReceivedEventArgs = new OperationEventArgs("[process-event-handler/message-received]");
         private readonly OperationEventArgs _processEventHandlerOperationNoMessageReceivedEventArgs = new OperationEventArgs("[process-event-handler/no-message-received]");
         private readonly OperationEventArgs _acknowledgeStartingEventArgs = new OperationEventArgs("[acknowledge/starting]");
@@ -311,6 +311,7 @@ namespace Shuttle.Esb.AzureEventHubs
                     Operation?.Invoke(this, new OperationEventArgs("[start-processing/starting]"));
 
                     await _processorClient.StartProcessingAsync(_cancellationToken);
+
                     _started = true;
                 }
                 catch (OperationCanceledException)
