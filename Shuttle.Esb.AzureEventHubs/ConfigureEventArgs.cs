@@ -6,7 +6,7 @@ namespace Shuttle.Esb.AzureEventHubs
     {
         private T _options;
 
-        public T tOptions
+        public T Options
         {
             get => _options;
             set => _options = value ?? throw new System.ArgumentNullException();

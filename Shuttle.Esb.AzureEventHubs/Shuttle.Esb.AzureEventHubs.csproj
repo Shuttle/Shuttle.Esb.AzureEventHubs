@@ -6,9 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.10.0" />
-    <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.10.0" />
-    <PackageReference Include="Shuttle.Esb" Version="14.0.1" />
+    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.11.4" />
+    <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.11.4" />
+    <PackageReference Include="Shuttle.Esb" Version="15.0.0" />
   </ItemGroup>
 
   <ItemGroup>

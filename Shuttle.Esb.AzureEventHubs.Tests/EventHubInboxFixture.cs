@@ -28,14 +28,14 @@ namespace Shuttle.Esb.AzureEventHubs.Tests
         [TestCase(100, false)]
         public void Should_be_able_to_process_queue_timeously(int count, bool isTransactionalEndpoint)
         {
-            TestInboxThroughput(AzureEventHubsConfiguration.GetServiceCollection(), "azureeh://azure/{0}", 1000, count, 1, isTransactionalEndpoint);
+            TestInboxThroughput(AzureEventHubsConfiguration.GetServiceCollection(), "azureeh://azure/{0}", 2000, count, 1, isTransactionalEndpoint);
         }
 
         [TestCase(100, true)]
         [TestCase(100, false)]
         public async Task Should_be_able_to_process_queue_timeously_async(int count, bool isTransactionalEndpoint)
         {
-            await TestInboxThroughputAsync(AzureEventHubsConfiguration.GetServiceCollection(), "azureeh://azure/{0}", 1000, count, 1, isTransactionalEndpoint);
+            await TestInboxThroughputAsync(AzureEventHubsConfiguration.GetServiceCollection(), "azureeh://azure/{0}", 2000, count, 1, isTransactionalEndpoint);
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Consumer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,9 +25,9 @@ public class AzureEventHubsConfiguration
                 ConsumerGroup = "$Default",
                 BlobContainerName = "eh-shuttle-esb",
                 OperationTimeout = TimeSpan.FromSeconds(5),
-                ConsumeTimeout = TimeSpan.FromSeconds(5),
+                ConsumeTimeout = TimeSpan.FromSeconds(15),
                 DefaultStartingPosition = EventPosition.Latest,
-                CheckpointInterval = 5
+                CheckpointInterval = 5,
             };
 
             configuration.GetSection($"{EventHubQueueOptions.SectionName}:azure").Bind(eventHubQueueOptions);
@@ -43,6 +44,7 @@ public class AzureEventHubsConfiguration
 
             eventHubQueueOptions.ConfigureProcessor += (sender, args) =>
             {
+                args.Options.PrefetchCount = 100;
                 Console.WriteLine($"[event] : ConfigureProcessor / Uri = '{((IQueue)sender).Uri}'");
             };
 

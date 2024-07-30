@@ -204,7 +204,7 @@ namespace Shuttle.Esb.AzureEventHubs
                 {
                     var partitionProperties = _producerClient.GetPartitionPropertiesAsync(partitionId, _cancellationToken).Result;
 
-                    await checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber + 1, _cancellationToken).ConfigureAwait(false);
+                    await checkpointStore.UpdateCheckpointAsync(_producerClient.FullyQualifiedNamespace, Uri.QueueName, _eventHubQueueOptions.ConsumerGroup, partitionId, partitionProperties.LastEnqueuedOffset + 1, partitionProperties.LastEnqueuedSequenceNumber, _cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -239,14 +239,9 @@ namespace Shuttle.Esb.AzureEventHubs
 
             try
             {
-                using (var batch = await _producerClient.CreateBatchAsync(_cancellationToken))
-                {
-                    batch.TryAdd(new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))));
+                await _producerClient.SendAsync(new[] { new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))) }, _cancellationToken);
 
-                    await _producerClient.SendAsync(batch, _cancellationToken).ConfigureAwait(false);
-
-                    MessageEnqueued?.Invoke(this, new MessageEnqueuedEventArgs(message, stream));
-                }
+                MessageEnqueued?.Invoke(this, new MessageEnqueuedEventArgs(message, stream));
             }
             catch (OperationCanceledException)
             {
