@@ -16,7 +16,7 @@
 		<copyright>Copyright (c) 2024, Eben Roux</copyright>
 		<tags>azure eventshubs</tags>
 		<dependencies>
-      <dependency id="Azure.Messaging.EventHubs" version="5.11.4" />
+      <dependency id="Azure.Messaging.EventHubs" version="5.11.5" />
       <dependency id="Azure.Messaging.EventHubs.Processor" version="5.11.4" />
       <dependency id="Shuttle.Esb" version="15.0.0" />
 		</dependencies>
