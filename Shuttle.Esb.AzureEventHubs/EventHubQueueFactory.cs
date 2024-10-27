@@ -3,36 +3,31 @@ using Microsoft.Extensions.Options;
 using Shuttle.Core.Contract;
 using Shuttle.Core.Threading;
 
-namespace Shuttle.Esb.AzureEventHubs
+namespace Shuttle.Esb.AzureEventHubs;
+
+public class EventHubQueueFactory : IQueueFactory
 {
-    public class EventHubQueueFactory : IQueueFactory
+    private readonly ICancellationTokenSource _cancellationTokenSource;
+    private readonly IOptionsMonitor<EventHubQueueOptions> _eventHubQueueOptions;
+
+    public EventHubQueueFactory(IOptionsMonitor<EventHubQueueOptions> eventHubQueueOptions, ICancellationTokenSource cancellationTokenSource)
     {
-        private readonly IOptionsMonitor<EventHubQueueOptions> _eventHubQueueOptions;
-        private readonly ICancellationTokenSource _cancellationTokenSource;
-        public string Scheme => "azureeh";
+        _eventHubQueueOptions = Guard.AgainstNull(eventHubQueueOptions);
+        _cancellationTokenSource = Guard.AgainstNull(cancellationTokenSource);
+    }
 
-        public EventHubQueueFactory(IOptionsMonitor<EventHubQueueOptions> eventHubQueueOptions, ICancellationTokenSource cancellationTokenSource)
+    public string Scheme => "azureeh";
+
+    public IQueue Create(Uri uri)
+    {
+        var queueUri = new QueueUri(Guard.AgainstNull(uri)).SchemeInvariant(Scheme);
+        var eventHubQueueOptions = _eventHubQueueOptions.Get(queueUri.ConfigurationName);
+
+        if (eventHubQueueOptions == null)
         {
-            Guard.AgainstNull(eventHubQueueOptions, nameof(eventHubQueueOptions));
-            Guard.AgainstNull(cancellationTokenSource, nameof(cancellationTokenSource));
-
-            _eventHubQueueOptions = eventHubQueueOptions;
-            _cancellationTokenSource = cancellationTokenSource;
+            throw new InvalidOperationException(string.Format(Esb.Resources.QueueConfigurationNameException, queueUri.ConfigurationName));
         }
 
-        public IQueue Create(Uri uri)
-        {
-            Guard.AgainstNull(uri, "uri");
-
-            var queueUri = new QueueUri(uri).SchemeInvariant(Scheme);
-            var eventHubQueueOptions = _eventHubQueueOptions.Get(queueUri.ConfigurationName);
-
-            if (eventHubQueueOptions == null)
-            {
-                throw new InvalidOperationException(string.Format(Esb.Resources.QueueConfigurationNameException, queueUri.ConfigurationName));
-            }
-
-            return new EventHubQueue(queueUri, eventHubQueueOptions, _cancellationTokenSource.Get().Token);
-        }
+        return new EventHubQueue(queueUri, eventHubQueueOptions, _cancellationTokenSource.Get().Token);
     }
 }
