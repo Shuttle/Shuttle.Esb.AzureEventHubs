@@ -1,8 +1,8 @@
 ﻿using System;
-using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Consumer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Shuttle.Core.Contract;
 
 namespace Shuttle.Esb.AzureEventHubs.Tests;
 
@@ -27,30 +27,31 @@ public class AzureEventHubsConfiguration
                 OperationTimeout = TimeSpan.FromSeconds(5),
                 ConsumeTimeout = TimeSpan.FromSeconds(15),
                 DefaultStartingPosition = EventPosition.Latest,
-                CheckpointInterval = 5,
+                CheckpointInterval = 5
             };
 
             configuration.GetSection($"{EventHubQueueOptions.SectionName}:azure").Bind(eventHubQueueOptions);
 
-            eventHubQueueOptions.ConfigureProducer += (sender, args) =>
+            eventHubQueueOptions.ConfigureProducer += (sender, _) =>
             {
-                Console.WriteLine($"[event] : ConfigureProducer / Uri = '{((IQueue)sender).Uri}'");
+                Console.WriteLine($@"[event] : ConfigureProducer / Uri = '{Guard.AgainstNull(sender as IQueue).Uri}'");
             };
 
-            eventHubQueueOptions.ConfigureBlobStorage += (sender, args) =>
+            eventHubQueueOptions.ConfigureBlobStorage += (sender, _) =>
             {
-                Console.WriteLine($"[event] : ConfigureBlobStorage / Uri = '{((IQueue)sender).Uri}'");
+                Console.WriteLine($@"[event] : ConfigureBlobStorage / Uri = '{Guard.AgainstNull(sender as IQueue).Uri}'");
             };
 
             eventHubQueueOptions.ConfigureProcessor += (sender, args) =>
             {
                 args.Options.PrefetchCount = 100;
-                Console.WriteLine($"[event] : ConfigureProcessor / Uri = '{((IQueue)sender).Uri}'");
+                
+                Console.WriteLine($@"[event] : ConfigureProcessor / Uri = '{Guard.AgainstNull(sender as IQueue).Uri}'");
             };
 
-            eventHubQueueOptions.ProcessError += (sender, args) =>
+            eventHubQueueOptions.ProcessError += (_, args) =>
             {
-                Console.WriteLine($"[event] : ProcessError / message = '{args.Exception.Message}'");
+                Console.WriteLine($@"[event] : ProcessError / message = '{args.Exception.Message}'");
             };
 
             builder.AddOptions("azure", eventHubQueueOptions);

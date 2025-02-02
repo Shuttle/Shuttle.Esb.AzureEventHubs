@@ -2,30 +2,28 @@
 using Microsoft.Extensions.DependencyInjection;
 using Shuttle.Core.Contract;
 
-namespace Shuttle.Esb.AzureEventHubs
+namespace Shuttle.Esb.AzureEventHubs;
+
+public class EventHubQueueBuilder
 {
-    public class EventHubQueueBuilder
+    internal readonly Dictionary<string, EventHubQueueOptions> EventHubQueueOptions = new();
+
+    public EventHubQueueBuilder(IServiceCollection services)
     {
-        internal readonly Dictionary<string, EventHubQueueOptions> EventHubQueueOptions = new Dictionary<string, EventHubQueueOptions>();
-        public IServiceCollection Services { get; }
+        Services = Guard.AgainstNull(services);
+    }
 
-        public EventHubQueueBuilder(IServiceCollection services)
-        {
-            Guard.AgainstNull(services, nameof(services));
-            
-            Services = services;
-        }
+    public IServiceCollection Services { get; }
 
-        public EventHubQueueBuilder AddOptions(string name, EventHubQueueOptions eventHubQueueOptions)
-        {
-            Guard.AgainstNullOrEmptyString(name, nameof(name));
-            Guard.AgainstNull(eventHubQueueOptions, nameof(eventHubQueueOptions));
+    public EventHubQueueBuilder AddOptions(string name, EventHubQueueOptions eventHubQueueOptions)
+    {
+        Guard.AgainstNullOrEmptyString(name);
+        Guard.AgainstNull(eventHubQueueOptions);
 
-            EventHubQueueOptions.Remove(name);
+        EventHubQueueOptions.Remove(name);
 
-            EventHubQueueOptions.Add(name, eventHubQueueOptions);
+        EventHubQueueOptions.Add(name, eventHubQueueOptions);
 
-            return this;
-        }
+        return this;
     }
 }
