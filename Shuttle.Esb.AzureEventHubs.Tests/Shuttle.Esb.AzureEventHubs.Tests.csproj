@@ -9,12 +9,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="NUnit" Version="4.2.2" />
-    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageReference Include="NUnit" Version="4.3.2" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
     <PackageReference Include="Shuttle.Core.Uris" Version="20.0.0" />
-    <PackageReference Include="Shuttle.Esb.Tests" Version="20.0.0" />
-    <PackageReference Include="Shuttle.Esb.Logging" Version="20.0.0" />
+    <PackageReference Include="Shuttle.Esb.Tests" Version="21.0.0" />
+    <PackageReference Include="Shuttle.Esb.Logging" Version="21.0.0" />
   </ItemGroup>
 
   <ItemGroup>

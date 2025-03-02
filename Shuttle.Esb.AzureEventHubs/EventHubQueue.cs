@@ -220,7 +220,7 @@ public class EventHubQueue : IQueue, IPurgeQueue, IDisposable
 
         try
         {
-            await _producerClient.SendAsync(new[] { new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false))) }, _cancellationToken);
+            await _producerClient.SendAsync([new EventData(Convert.ToBase64String(await stream.ToBytesAsync().ConfigureAwait(false)))], _cancellationToken);
 
             MessageEnqueued?.Invoke(this, new(message, stream));
         }
@@ -377,9 +377,9 @@ public class EventHubQueue : IQueue, IPurgeQueue, IDisposable
 
         Operation?.Invoke(this, _bufferOperationStartingEventArgs);
 
-        var timeout = DateTime.Now.Add(_eventHubQueueOptions.ConsumeTimeout);
+        var timeout = DateTimeOffset.Now.Add(_eventHubQueueOptions.ConsumeTimeout);
 
-        while (_receivedMessages.Count == 0 && timeout > DateTime.Now && !_cancellationToken.IsCancellationRequested)
+        while (_receivedMessages.Count == 0 && timeout > DateTimeOffset.Now && !_cancellationToken.IsCancellationRequested)
         {
             try
             {
